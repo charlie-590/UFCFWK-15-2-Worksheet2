@@ -1,48 +1,52 @@
-CC=gcc
-AS=nasm
-LD=ld
+CC = gcc
+AS = nasm
+LD = ld
 
-CFLAGS=-m32 -ffreestanding -fno-pie -fno-stack-protector -nostdlib -nostdinc
-ASFLAGS=-f elf32
-LDFLAGS=-m elf_i386 -T source/link.ld
+CFLAGS  = -m32 -ffreestanding -fno-pie -fno-stack-protector -nostdlib -nostdinc
+ASFLAGS = -f elf32
+LDFLAGS = -m elf_i386 -T source/link.ld
 
-OBJS=source/loader.o \
-     source/kmain.o \
-     drivers/framebuffer.o \
-     drivers/ports.o
+OBJ = \
+source/loader.o \
+source/kmain.o \
+drivers/frame_buffer.o \
+drivers/ports.o \
+drivers/keyboard.o \
+drivers/interrupts.o \
+drivers/pic.o \
+drivers/hardware_interrupt_enabler.o \
+drivers/interrupt_asm.o \
+drivers/interrupt_handlers.o
 
-all: os.iso
+all: kernel.elf os.iso
 
-source/loader.o: source/loader.asm
-	$(AS) $(ASFLAGS) source/loader.asm -o source/loader.o
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-source/kmain.o: source/kmain.c
-	$(CC) $(CFLAGS) -c source/kmain.c -o source/kmain.o
+%.o: %.asm
+	$(AS) $(ASFLAGS) $< -o $@
 
-drivers/framebuffer.o: drivers/framebuffer.c
-	$(CC) $(CFLAGS) -c drivers/framebuffer.c -o drivers/framebuffer.o
+%.o: %.s
+	$(AS) $(ASFLAGS) $< -o $@
 
-drivers/ports.o: drivers/ports.asm
-	$(AS) $(ASFLAGS) drivers/ports.asm -o drivers/ports.o
-
-kernel.elf: $(OBJS)
-	$(LD) $(LDFLAGS) $(OBJS) -o kernel.elf
+kernel.elf: $(OBJ)
+	$(LD) $(LDFLAGS) $(OBJ) -o kernel.elf
 
 os.iso: kernel.elf
 	cp kernel.elf iso/boot/kernel.elf
 	genisoimage -R \
-	  -b boot/grub/stage2_eltorito \
-	  -no-emul-boot \
-	  -boot-load-size 4 \
-	  -A os \
-	  -input-charset utf8 \
-	  -quiet \
-	  -boot-info-table \
-	  -o os.iso \
-	  iso
+		-b boot/grub/stage2_eltorito \
+		-no-emul-boot \
+		-boot-load-size 4 \
+		-A os \
+		-input-charset utf8 \
+		-quiet \
+		-boot-info-table \
+		-o os.iso \
+		iso
 
 run: os.iso
-	qemu-system-i386 -nographic -boot d -cdrom os.iso -m 32 -d cpu -D logQ.txt
+	qemu-system-i386 -boot d -cdrom os.iso -m 32
 
 clean:
-	rm -f source/*.o drivers/*.o kernel.elf os.iso logQ.txt
+	rm -f $(OBJ) kernel.elf os.iso

@@ -1,10 +1,10 @@
-#include "../drivers/framebuffer.h"
+#include "../drivers/frame_buffer.h"
+#include "../drivers/interrupts.h"
 
 void kmain()
 {
-    fb_clear();
-    fb_move(0, 0);
-    fb_write("hi");
+    interrupts_install_idt();
+    enable_hardware_interrupts();
 
     while (1) { }
 }
