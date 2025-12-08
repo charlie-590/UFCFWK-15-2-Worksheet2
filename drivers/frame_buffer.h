@@ -21,6 +21,8 @@ void fb_write_cell(unsigned int i, char c, unsigned char fg, unsigned char bg);
 void fb_move_cursor(unsigned short pos);   // low-level
 void fb_move(unsigned short x, unsigned short y); // 2D API
 void fb_clear();
-void fb_write(const char *str);
-
+void fb_write_string(const char *str);
+void fb_newline(void);
+void fb_write_char(char c);
+void fb_backspace(void);
 #endif

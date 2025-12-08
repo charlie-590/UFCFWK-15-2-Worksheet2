@@ -45,6 +45,10 @@ struct stack_state {
 } __attribute__((packed));
 
 void interrupt_handler(struct cpu_state cpu, u32int interrupt, struct stack_state stack);
+void buffer_put(char c);
 
+// input functions 
+char getc(void);
+int readline(char *buffer, int max_size);
 
 #endif /* INCLUDE_INTERRUPTS */

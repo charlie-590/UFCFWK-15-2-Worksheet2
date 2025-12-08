@@ -4,6 +4,7 @@
 #include "frame_buffer.h"
 #include "keyboard.h"
 
+
 #define INTERRUPTS_DESCRIPTOR_COUNT 256 
 #define INTERRUPTS_KEYBOARD 33 
 #define INPUT_BUFFER_SIZE 256
@@ -11,6 +12,11 @@
 u8int input_buffer[INPUT_BUFFER_SIZE];
 u8int buffer_index = 0;
  
+u32int write_index = 0;
+u32int read_index = 0;
+
+static u32int line_length = 0;
+
 struct IDTDescriptor idt_descriptors[INTERRUPTS_DESCRIPTOR_COUNT];
 struct IDT idt;
 
@@ -54,61 +60,102 @@ void interrupts_install_idt()
     outb(0x21, inb(0x21) & ~(1 << 1));
 }
 
+void buffer_put(char c)
+{
+    if (BUFFER_COUNT < INPUT_BUFFER_SIZE) {
+        input_buffer[write_index] = c;
+        write_index = (write_index + 1) % INPUT_BUFFER_SIZE;
+        BUFFER_COUNT++;
+    }
+}
 
 /* Interrupt handlers ********************************************************/
 
-void interrupt_handler(__attribute__((unused)) struct cpu_state cpu, u32int interrupt, __attribute__((unused)) struct stack_state stack) {
+void interrupt_handler(__attribute__((unused)) struct cpu_state cpu,u32int interrupt, __attribute__((unused)) struct stack_state stack)
+{
     u8int input;
     u8int ascii;
-    static u32int fe_count = 0;
-    static u32int debug_count = 0;
-    
-    switch (interrupt) {
-        case INTERRUPTS_KEYBOARD:
-            while ((inb(0x64) & 1)) {  
-                input = keyboard_read_scan_code();
-                
-                // Debug output
-                fb_write_cell(debug_count * 3 + 0, 'x', FB_GREEN, FB_DARK_GREY);
-                fb_write_cell(debug_count * 3 + 1, "0123456789ABCDEF"[input >> 4], FB_GREEN, FB_DARK_GREY);
-                fb_write_cell(debug_count * 3 + 2, "0123456789ABCDEF"[input & 0xF], FB_GREEN, FB_DARK_GREY);
-                debug_count++;
 
-                // Track FE codes
-                if (input == 0xFE) {
-                    fe_count++;
-                    continue;
+    switch (interrupt) {
+
+        case INTERRUPTS_KEYBOARD:
+            while (inb(0x64) & 1) {
+
+                input = keyboard_read_scan_code();
+                if (input & 0x80) continue;   // ignore key release
+
+                ascii = keyboard_scan_code_to_ascii(input);
+                if (ascii == 0) continue;
+
+                /* Echo to screen (Part 1 behaviour) */
+                if (ascii == '\b') {
+                    fb_backspace();
+                    buffer_put('\b');         // <-- important
                 }
-                
-                // Only process if it's not a break code
-                if (!(input & 0x80)) {
-                    if (input <= KEYBOARD_MAX_ASCII) {
-                        ascii = keyboard_scan_code_to_ascii(input);
-                        if (ascii != 0) {
-                            if (ascii == '\b') {
-                                if (BUFFER_COUNT > 0) {
-                                    BUFFER_COUNT--;
-                                    fb_write_cell(BUFFER_COUNT, ' ', FB_DARK_GREY, FB_GREEN);
-                                }
-                            }
-                            else if (ascii == '\n') {
-                                BUFFER_COUNT = ((BUFFER_COUNT / 80) + 1) * 80;
-                            }
-                            else {
-                                fb_write_cell(BUFFER_COUNT, ascii, FB_DARK_GREY, FB_GREEN);
-                                BUFFER_COUNT++;
-                            }
-                        }
-                    }
+                else if (ascii == '\n') {
+                    fb_newline();
+                    buffer_put('\n');         // <-- important
                 }
-                
-                buffer_index = (buffer_index + 1) % INPUT_BUFFER_SIZE;
+                else {
+                    fb_write_char(ascii);
+                    buffer_put(ascii);        // <-- important
+                }
             }
-            
+
             pic_acknowledge(interrupt);
             break;
-            
+
         default:
             break;
     }
+}
+
+char getc(void)
+{
+    if (BUFFER_COUNT == 0) {
+        // no data available
+        return 0;   // '\0' means nothing there
+    }
+
+    char c = (char)input_buffer[read_index];
+    read_index = (read_index + 1) % INPUT_BUFFER_SIZE;
+    BUFFER_COUNT--;
+
+    return c;
+}
+
+int readline(char *buffer, int max_size)
+{
+    int i = 0;
+
+    while (1) {
+        char c = getc();
+
+        if (c == 0) {
+            // no data yet, just keep waiting
+            continue;
+        }
+
+        // stop if newline
+        if (c == '\n') {
+            break;
+        }
+
+        // handle backspace
+        if (c == '\b') {
+            if (i > 0) {
+                i--;   
+            }
+            continue;
+        }
+
+        // avoid buffer overflow
+        if (i < max_size - 1) {
+            buffer[i++] = c;
+        }
+        // if buffer is full, we just drop extra chars until newline
+    }
+
+    buffer[i] = '\0';
+    return i;
 }

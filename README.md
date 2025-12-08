@@ -81,3 +81,139 @@ Then the second error I encountered was without using the -curses but it still r
 
 Becuase of these errors I decided to download qemu-w64 on my local device and download my os.iso image off the cloud environment and I ran it locally using this qemu command: "qemu-system-i386 -boot d -cdrom os.iso -m 32" which provided the correct output of "hi" in the OS!
 
+# Worksheet 2 part 2
+## Task 1 - keyboard input via interrupts 
+In this task i had to extend the operating system to support keyboard input further using hardware interrupts using the provided instructions and extra files.
+
+To start this task I added the starter files which were provided with the worksheet. these files contained basic structures required for the interrup handling, keyboard input and PIC configuration. 
+
+### Intergrating these files
+I downloaded and extracted the provided files and intergrated them into my existing project structure. I put all the low-level hardware and driver related code into the drivers/ folder and put the kernel code in source/
+
+These are the files that were added
+* interrupt handling
+    * interrupts.c
+    * interrupts.h 
+    * interrupt_asm.s
+    * interrupt_handlers.s
+* Programmable interrupt controller
+    * pic.c
+    * pic.h
+* Keyboard input
+    * keyboard.c
+    * keyboard.h 
+* Interrupt enabling
+    * hardware_interrupt_enabler.s
+    * hardware_interrupt_enabler.h
+
+### Reading scan code from the keyboard
+In interrupts.c there is a function called interrupt_handler, the interrupt handler checks the keyboard status register to determine if data is available and then reads the scan code raw from the keyboard data port using inb instrction.
+
+![alt text](images/ws2_task1_interruptskeyboard.png)
+
+key release events are ignored ensuring only key press events are processed.
+
+### Converting scan codes to ASCII
+The raw scan codes are taken and converted into ASCII using a lookup table that was already implemented into keyboard.c.
+
+![alt text](images/ws2_task1_scantoascii.png)
+
+If a scan code matches it outputs the character and if it does not the function returns zero instead and the input is ignored.
+
+### Handling regular characters
+For regular characters the interrupt handler writes the characters ti the VGA framebugger so that the input appears on the screen as the user types. 
+
+![alt text](images/ws2_task1_charwrite.png)
+
+### Handling backspaces
+when backspaces are detected the most recently displayed character is removed from the screen by moving the cursor backwards and overwriting the previous framebuffer cell.
+
+![alt text](images/ws2_task1_backspaces.png)
+
+### Handling enter
+when the enter key is pressed the currently line is terminated and a newline is created.
+
+![alt text](images/ws2_task1_enter.png)
+
+### Result of task 1 
+By extending the interrupt handler function and intergrating the new driver files the OS can now:
+* Receieve a keyboard input via hardware interrupts,
+* Read scan codes,
+* Convert scan codes into ASCII,
+* Display what was typed in real time,
+* Handle backspaces and enter keys
+
+![alt text](images/ws2_task1_hello.png)
+
+Here you can see the outcome of Task 1.
+
+## Task 2 - input buffer API
+For task 2 I built a input buffer API so the keyboard interrupt handler doesnt talk directly to the schell. Instead, key presses are stored in a circular buffer and other parts ofthe OS read characters using new functions getc and readline.
+
+### Circular buffer design
+I added the buffer state to interrupts.c
+
+![alt text](images/ws2_task2_circularbuffer.png)
+
+This makes the buffer act like a ring where:
+* write_index is where the next character will be written
+* read_index is wher the next character will be read by getc() and readline()
+* BUFFER_COUNT is how many characters are stored
+
+Then I added a small helper function to put characters into the buffer from the interrupt handler.
+
+### Updating the keyboard interrupt handler
+In task 1 the interrupt handler just coverted scan codes into ascii and directly wrote characters to the framebuffer. To exetend upon this I made it also push characters into the circular buffer for later use. This means:
+* Every visible character typed is shown immediately on screen using fb_write_char
+* While also storing it in the input buffer via buffer_put
+* And Backspaces and newlines are also reflected apon both visually and in the buffer.
+
+### get c and readline
+In interrupt.c I added two new functions getc() and readline(). The purpose of these funcitons is to provide a clean API for reading keyboard inputs from the OS.
+
+The getc() function provides the lowest level interface for reading input. It removes and returns a single character from the input. If the buffer is empty getc() returns 0 allowing caller code to wait until the input becomes available.
+
+The readline function builds on to of getc to provide line based input. It repeatedly calls getc() until a newline character is recieve, storing the characters into a caller-provided buffer. Bounds checking is used to make sure the buffer does not overflow and extra characters are ignored.
+
+![alt text](images/ws2_task2_inputfunctions.png)
+
+Here you can see that what im typing is being echoed back:
+
+![alt text](images/ws2_task2_inputbuffer.png)
+
+## Task 3 - Terminal implementation
+The purpose of this task was to provide a basic terminal interface and create some different commands. 
+To complete this task I made my terminal operate in a loop:
+* first dispalying myos> 
+* then the user input is read using readline()
+* then the line is parsed ubto a command and optional arguements
+* the command is executed if its recognised in the command list
+* or an error message occurs if its not recognised
+
+### Command parsing and dispatch
+User input is parsed by splitting the into two strings:
+* the command
+* the arguements
+
+A command table was added using a structuer containing:
+* The command name 
+* A function pointer to the command handler
+
+When a input is entered:
+1. The command name is extracted
+2. The command table is searched
+3. if a match is found the associated function is called
+4. if no match is found an error is displayed
+
+![alt text](images/ws2_task3_commandtable.png)
+
+### Implemented commands
+I have added 4 commands:
+* echo [text] - repeats the input back to the screen
+* clear - which clears the screen by resetting the VGA framebuffer and cursor
+* shutdown - which initates a system shutdown by writing to QEMUs ACPI power management port
+* help - which displays a list of available commands and thier descriptions
+
+![alt text](images/ws2_task3_workingcommands.png)
+
+This image shows the commands working in action.

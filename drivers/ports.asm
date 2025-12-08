@@ -1,5 +1,6 @@
 global outb
 global inb
+global outw     
 
 section .text
 outb:
@@ -11,4 +12,10 @@ outb:
 inb:
     mov dx, [esp + 4]
     in  al, dx
+    ret
+
+outw:
+    mov dx, [esp + 4]      ; port (16 bits)
+    mov ax, [esp + 8]      ; value (16 bits)
+    out dx, ax
     ret

@@ -16,7 +16,8 @@ drivers/interrupts.o \
 drivers/pic.o \
 drivers/hardware_interrupt_enabler.o \
 drivers/interrupt_asm.o \
-drivers/interrupt_handlers.o
+drivers/interrupt_handlers.o\
+drivers/power.o
 
 all: kernel.elf os.iso
 
